@@ -1,0 +1,5 @@
+<launch>
+    <node name="ros_bridge_node" pkg="ros_bridge_node" type="ros_bridge_node.py" output="screen">
+        <rosparam command="load" file="$(find ros_bridge_node)/config/config.yaml" />
+    </node>
+</launch>

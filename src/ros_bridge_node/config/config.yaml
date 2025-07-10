@@ -1,0 +1,38 @@
+# config.yaml
+mqtt_broker: "j505167c.ala.cn-hangzhou.emqxsl.cn"
+mqtt_port: 8883
+mqtt_username: "test"
+mqtt_password: "ipacrl205"
+
+ros_to_network:
+  "/uav/gps":
+    url: "uav/gps"
+    msg_type: "sensor_msgs/NavSatFix"
+  "/uav/velocity_heading":
+    url: "uav/velocity_heading"
+    msg_type: "geometry_msgs/TwistStamped"
+  "/uav/status":
+    url: "uav/status"
+    msg_type: "std_msgs/Int32"
+  "/uav/target_detection":
+    url: "uav/target_detection"
+    msg_type: "geometry_msgs/Point"
+  "/target/gps":
+    url: "target/gps"
+    msg_type: "sensor_msgs/NavSatFix"
+  "/target/velocity_heading":
+    url: "target/velocity_heading"
+    msg_type: "geometry_msgs/TwistStamped"
+  "/target/type":
+    url: "target/type"
+    msg_type: "std_msgs/Int32"
+  "/uav/mission_feedback":
+    url: "uav/mission_feedback"
+    msg_type: "std_msgs/String"
+network_to_ros:
+  "/command/target_location":
+    url: "command/target_location"
+    msg_type: "sensor_msgs/NavSatFix"
+  "/command/mission":
+    url: "command/mission"
+    msg_type: "std_msgs/String"
