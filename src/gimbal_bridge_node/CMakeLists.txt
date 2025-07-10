@@ -53,10 +53,7 @@ FILES
 #   Message1.msg
 #   Message2.msg
 GimbalState.msg
-<<<<<<< HEAD
-=======
 GimbalCmd.msg
->>>>>>> 72f602e1751dfffabca6b5833a9f397d87336ccc
  )
 
 ## Generate services in the 'srv' folder
@@ -142,10 +139,7 @@ add_library(gimbal_bridge_lib
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 add_executable(gimbal_state_publisher src/gimbal_state_publisher.cpp)
-<<<<<<< HEAD
-=======
 add_executable(gimbal_command_subscriber src/gimbal_command_subscriber.cpp)
->>>>>>> 72f602e1751dfffabca6b5833a9f397d87336ccc
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
