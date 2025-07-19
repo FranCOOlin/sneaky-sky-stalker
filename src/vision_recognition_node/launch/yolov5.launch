@@ -1,0 +1,99 @@
+<launch>
+    <!-- Detection configuration -->
+    <arg name="weights" default="/home/nvidia/sneaky-sky-stalker/src/vision_recognition_node/pt/best.pt" />
+    <arg name="data" default="/home/nvidia/sneaky-sky-stalker/src/vision_recognition_node/yaml/cvc1.yaml" />
+    <arg name="confidence_threshold" default="0.5" />
+    <arg name="iou_threshold" default="0.45" />
+    <arg name="maximum_detections" default="1000" />
+    <arg name="device" default="0" />
+    <arg name="agnostic_nms" default="true" />
+    <arg name="line_thickness" default="3" />
+    <arg name="dnn" default="true" />
+    <arg name="half" default="false" />
+
+    <!-- replace imgsz -->
+    <arg name="inference_size_h" default="480" />
+    <arg name="inference_size_w" default="640" />
+
+    <!-- Visualize using OpenCV window -->
+    <arg name="view_image" default="true" />
+
+    <!-- ROS topics -->
+    <arg name="input_image_topic" default="/camera/color/image_raw" />
+    <arg name="output_topic" default="/yolov5/detections" />
+
+    <!-- Optional topic (publishing annotated image) -->
+    <arg name="publish_image" default="false" />
+    <arg name="output_image_topic" default="/yolov5/image_out" />
+
+    <!-- capture -->
+    <arg name="enable_shape_capture" default="true" /> 
+    <arg name="cylinder_class" default="cylinder" />   
+    <arg name="cone_class" default="cone" />   
+    
+    <!-- Bbox ENU Converter  -->
+    <arg name="enable_bbox_converter" default="true" /> 
+    <arg name="output_enu_topic" default="/yolov5/detections_enu" />  
+    <arg name="drone_pose_topic" default="/mavros/local_position/local" />
+    
+    <!--boat -->
+    <arg name="ship_class" default="ship" /> 
+    
+    <!-- boat_capture -->
+    <arg name="enable_ship_controller" default="true" />
+    
+    
+         
+
+    <node pkg="vision_recognition_node" name="detect" type="detect.py" output="screen">
+        <param name="weights" value="$(arg weights)" />
+        <param name="data" value="$(arg data)" />
+        <param name="confidence_threshold" value="$(arg confidence_threshold)" />
+        <param name="iou_threshold" value="$(arg iou_threshold)" />
+        <param name="maximum_detections" value="$(arg maximum_detections)" />
+        <param name="device" value="$(arg device)" />
+        <param name="agnostic_nms" value="$(arg agnostic_nms)" />
+        <param name="line_thickness" value="$(arg line_thickness)" />
+        <param name="dnn" value="$(arg dnn)" />
+        <param name="half" value="$(arg half)" />
+
+        <param name="inference_size_h" value="$(arg inference_size_h)" />
+        <param name="inference_size_w" value="$(arg inference_size_w)" />
+
+        <param name="input_image_topic" value="$(arg input_image_topic)" />
+        <param name="output_topic" value="$(arg output_topic)" />
+
+        <param name="view_image" value="$(arg view_image)" />
+
+        <param name="publish_image" value="$(arg publish_image)" />
+        <param name="output_image_topic" value="$(arg output_image_topic)" />
+    </node>
+    
+    <!-- c -->
+    <group if="$(arg enable_shape_capture)">
+        <node pkg="vision_recognition_node" name="capture" type="capture.py" output="screen">
+            <param name="bbox_topic" value="$(arg output_topic)" /> 
+            <param name="cylinder_class" value="$(arg cylinder_class)" /> 
+            <param name="cone_class" value="$(arg cone_class)" /> 
+        </node>
+    </group>
+
+    <!-- Bbox ENU -->
+    <group if="$(arg enable_bbox_converter)">
+        <node pkg="vision_recognition_node" name="vision_calculate_usv" type="vision_calculate_usv.py" output="screen">
+            <param name="input_bbox_topic" value="$(arg output_topic)" /> 
+            <param name="output_bbox_topic" value="$(arg output_enu_topic)" /> 
+        </node>
+    </group>
+    
+    <!-- boat_capture -->
+    <group if="$(arg enable_ship_controller)">
+        <node pkg="vision_recognition_node" name="boat_capture" type="boat_capture.py" output="screen">
+            <param name="detection_topic" value="$(arg output_topic)" />
+            <param name="ship_class" value="$(arg ship_class)" />
+            <param name="cone_class" value="$(arg cone_class)" />
+            <param name="cylinder_class" value="$(arg cylinder_class)" />
+        </node>
+    </group>
+ 
+</launch>
