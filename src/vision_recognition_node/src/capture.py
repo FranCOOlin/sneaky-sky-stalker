@@ -132,7 +132,7 @@ class ShapeCaptureNode:
             
             
     def publish_target_detection(self, target_id, detected):
-        """发布目标检测状态"""
+        
         msg = Bool()
         msg.data = detected
         
