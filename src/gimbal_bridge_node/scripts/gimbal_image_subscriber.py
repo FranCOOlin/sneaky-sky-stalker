@@ -9,7 +9,7 @@ def image_callback(msg):
     try:
         print("Received image message")
         cv_image = bridge.imgmsg_to_cv2(msg, "bgr8")
-        cv2.imwrite("/root/catkin_ws/tmp/image.jpg", cv_image)
+        cv2.imwrite("/home/nvidia/sneaky-sky-stalker/tmp/image.jpg", cv_image)
     except Exception as e:
         rospy.logerr("Failed to convert image message: %s", e)
 

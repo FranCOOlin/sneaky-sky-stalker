@@ -310,6 +310,7 @@ uint16_t siyi_pack_auto_focus(uint8_t *bag, uint16_t max_bag_len, uint8_t auto_f
     request.auto_focus = auto_focus;
     request.touch_x = touch_x;
     request.touch_y = touch_y;
+
     return siyi_pack_data(CMD_AUTO_FOCUS, true, (const uint8_t *)&request, sizeof(request), seq, bag, max_bag_len);
 }
 
