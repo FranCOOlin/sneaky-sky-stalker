@@ -149,6 +149,7 @@ public:
             ROS_ERROR("recvfrom failed: %s", strerror(errno));
             return false;
         }
+
         AttitudeDataResponse response;
         // 解析响应
         if (!siyi_unpack_attitude_data_response(bag, bag_len, &response))
@@ -172,7 +173,7 @@ public:
         return true;
     }
 
-    bool execute_command(const gimbal_bridge_node::GimbalCmd &cmd)
+    bool execute_turn_command(const gimbal_bridge_node::GimbalCmd &cmd)
     {
         // 打包云台转向命令
         uint8_t send_buf[RECV_BUF_SIZE] = {0};
@@ -195,10 +196,53 @@ public:
         return true;
     }
 
+    bool execute_zoom_in_command()
+    {
+        // 打包云台变倍命令
+        uint8_t send_buf[RECV_BUF_SIZE] = {0};
+        uint16_t request_length = siyi_pack_absolute_zoom(send_buf, RECV_BUF_SIZE, 0x02, 0x00, 0x0000);
+        if (request_length == 0)
+        {
+            ROS_ERROR("Failed to pack zoom in command");
+            return false;
+        }
+
+        // 发送数据
+        if (sendto(sockfd, send_buf, request_length, 0,
+                   (struct sockaddr *)&send_addr_, sizeof(send_addr_)) < 0)
+        {
+            ROS_ERROR("sendto failed: %s", strerror(errno));
+            return false;
+        }
+        return true;
+    }
+
+    bool execute_zoom_out_command()
+    {
+        // 打包云台变倍命令
+        uint8_t send_buf[RECV_BUF_SIZE] = {0};
+        uint16_t request_length = siyi_pack_absolute_zoom(send_buf, RECV_BUF_SIZE, 0x01, 0x00, 0x0000);
+        if (request_length == 0)
+        {
+            ROS_ERROR("Failed to pack zoom out command");
+            return false;
+        }
+
+        // 发送数据
+        if (sendto(sockfd, send_buf, request_length, 0,
+                   (struct sockaddr *)&send_addr_, sizeof(send_addr_)) < 0)
+        {
+            ROS_ERROR("sendto failed: %s", strerror(errno));
+            return false;
+        }
+        return true;
+    }
+
     int get_state_machine() const
     {
         return state_machine;
     }
+
     void set_state_machine(int state)
     {
         if (state < 0 || state > 2)
@@ -209,6 +253,16 @@ public:
         state_machine = state;
     }
 
+    bool is_zoom_in() const
+    {
+        return zoom_in;
+    }
+
+    void set_zoom_in(bool zoom)
+    {
+        zoom_in = zoom;
+    }
+
 private:
     static constexpr int RECV_BUF_SIZE = 64;
     std::string server_ip_;
@@ -216,6 +270,7 @@ private:
     struct sockaddr_in send_addr_;
     int sockfd;
     int state_machine = 0; // 云台状态机，0:前下方，1:正下方，2:自由控制
+    bool zoom_in = false; // 是否处于变倍状态
 };
 
 // 初始化云台桥接类
@@ -226,9 +281,9 @@ void gimbal_cmd_callback(const gimbal_bridge_node::GimbalCmd::ConstPtr &msg)
     // 打印接收到的命令信息
     ROS_INFO("Received Gimbal Command: yaw=%.2f, pitch=%.2f, gimbal_state_machine = %d, json_string=%s",
              msg->yaw, msg->pitch, msg->gimbal_state_machine, msg->json_string.c_str());
-    if (msg->gimbal_state_machine < 0 || msg->gimbal_state_machine > 2)
+    if (msg->gimbal_state_machine < 0 || msg->gimbal_state_machine > 3)
     {
-        ROS_ERROR("Invalid gimbal state machine value: %d. It must be 0, 1, or 2.", msg->gimbal_state_machine);
+        ROS_ERROR("Invalid gimbal state machine value: %d. It must be 0, 1, 2, or 3.", msg->gimbal_state_machine);
         return;
     }
     gimbal_bridge_node::GimbalCmd gimbal_cmd = *msg;
@@ -273,13 +328,29 @@ void gimbal_cmd_callback(const gimbal_bridge_node::GimbalCmd::ConstPtr &msg)
             return;
         }
     }
-    if (!gimbal_bridge.execute_command(gimbal_cmd))
+    if (!gimbal_bridge.execute_turn_command(gimbal_cmd))
     {
         ROS_ERROR("Failed to execute gimbal command.");
     }
     else
     {
         ROS_INFO("Gimbal command executed successfully.");
+    }
+
+    if (gimbal_cmd.zoom_in_state == 0 && gimbal_bridge.is_zoom_in()) {
+        if (gimbal_bridge.execute_zoom_out_command()) {
+            ROS_INFO("Zoom out command executed successfully.");
+            gimbal_bridge.set_zoom_in(false);
+        } else {
+            ROS_ERROR("Failed to execute zoom out command.");
+        }
+    } else if (gimbal_cmd.zoom_in_state == 1 && !gimbal_bridge.is_zoom_in()) {
+        if (gimbal_bridge.execute_zoom_in_command()) {
+            ROS_INFO("Zoom in command executed successfully.");
+            gimbal_bridge.set_zoom_in(true);
+        } else {
+            ROS_ERROR("Failed to execute zoom in command.");
+        }
     }
 }
 

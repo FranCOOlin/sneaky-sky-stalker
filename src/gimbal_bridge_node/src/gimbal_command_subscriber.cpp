@@ -88,7 +88,7 @@ public:
         ROS_INFO("Zoom Firmware Version: %u", response.zoom_firmware_ver);
     }
 
-    bool execute_command(const gimbal_bridge_node::GimbalCmd &cmd)
+    bool execute_turn_command(const gimbal_bridge_node::GimbalCmd &cmd)
     {
         // 打包云台转向命令
         uint8_t send_buf[RECV_BUF_SIZE] = {0};
@@ -157,7 +157,7 @@ void gimbal_cmd_callback(const gimbal_bridge_node::GimbalCmd::ConstPtr &msg)
         ROS_ERROR("Invalid gimbal command: yaw or pitch out of range.");
         return;
     }
-    if (!gimbal_bridge.execute_command(gimbal_cmd))
+    if (!gimbal_bridge.execute_turn_command(gimbal_cmd))
     {
         ROS_ERROR("Failed to execute gimbal command.");
     }
