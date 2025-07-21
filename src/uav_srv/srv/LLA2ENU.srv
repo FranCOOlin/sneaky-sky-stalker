@@ -1,0 +1,4 @@
+sensor_msgs/NavSatFix gps
+---
+geometry_msgs/Point point
+
