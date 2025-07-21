@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 import importlib
+import math
 import rospy
 import json
 from std_msgs.msg import String
 from sensor_msgs.msg import NavSatFix
+from geometry_msgs.msg import TwistStamped, Vector3
 
 class MessageHandler:
     """消息处理基类"""
@@ -45,14 +47,16 @@ class ControlCommandHandler(MessageHandler):
     def handle(self, payload):
         try:
             ros_msg = String()
-            
-            ros_msg.data = payload
-            print(ros_msg)
+            payload = json.loads(payload)
+            ros_msg.data = payload['data']
             self.publisher.publish(ros_msg)
             rospy.logdebug(f"转发{self.log_name}: {payload}")
             return True
         except Exception as e:
             rospy.logerr(f"处理{self.log_name}错误: {str(e)}")
+            ros_msg.data = payload
+            # print(ros_msg)
+            self.publisher.publish(ros_msg)
             return False
 
 class StrikeCommandHandler(MessageHandler):
@@ -65,6 +69,7 @@ class StrikeCommandHandler(MessageHandler):
             ros_msg = String()
             ros_msg.data = payload
             self.publisher.publish(ros_msg)
+            print(ros_msg)
             rospy.logdebug(f"转发{self.log_name}: {payload}")
             return True
         except json.JSONDecodeError:
@@ -79,20 +84,22 @@ class LocationHandler(MessageHandler):
     def handle(self, payload):
         try:
             gps_data = json.loads(payload)
-            print(gps_data)
+            # print(gps_data)
             topicid = gps_data["targetId"]
-            topic = 'command/target_location'+topicid
-            self.publisher = self.create_publisher(topic, 'sensor_msgs/NavSatFix')
-            msg = NavSatFix()
-            msg.header.frame_id = gps_data["header"]["frame_id"]
-            msg.header.stamp = rospy.Time(
-                secs=gps_data["header"]["stamp"]["secs"],
-                nsecs=gps_data["header"]["stamp"]["nsecs"]
-            )
 
-            # 填充状态信息
-            msg.status.status = gps_data["status"]["status"]
-            msg.status.service = gps_data["status"]["service"]
+            self.publisher1 = self.create_publisher(f'command/target{topicid}_location', 'sensor_msgs/NavSatFix')
+            self.publisher2 = self.create_publisher(f'command/target{topicid}_velocity', 'geometry_msgs/TwistStamped')
+            
+            msg = NavSatFix()
+            # msg.header.frame_id = gps_data["header"]["frame_id"]
+            # msg.header.stamp = rospy.Time(
+            #     secs=gps_data["header"]["stamp"]["secs"],
+            #     nsecs=gps_data["header"]["stamp"]["nsecs"]
+            # )
+
+            # # 填充状态信息
+            # msg.status.status = gps_data["status"]["status"]
+            # msg.status.service = gps_data["status"]["service"]
 
             # 填充位置信息
             msg.latitude = gps_data["latitude"]
@@ -100,10 +107,23 @@ class LocationHandler(MessageHandler):
             msg.altitude = gps_data["altitude"]
 
             # 填充协方差信息
-            msg.position_covariance = gps_data["position_covariance"]
-            msg.position_covariance_type = gps_data["position_covariance_type"]
-            print(msg)
-            self.publisher.publish(msg)
+            # msg.position_covariance = gps_data["position_covariance"]
+            # msg.position_covariance_type = gps_data["position_covariance_type"]
+            # print(msg)
+            self.publisher1.publish(msg)
+            
+            
+            msg2 = TwistStamped()
+            speed = gps_data['speed']
+            course = gps_data['course']
+            course_rad = math.radians(course)
+            vx = speed * math.sin(course_rad)  # 东向分量
+            vy = speed * math.cos(course_rad)  # 北向分量
+            # 设置线速度
+            # print(msg2)
+            msg2.twist.linear = Vector3(vx, vy, 0.0)          
+              
+            self.publisher2.publish(msg2)
             rospy.logdebug(f"转发{self.log_name}: {gps_data}")
             return True
         except (json.JSONDecodeError, ValueError, TypeError) as e:

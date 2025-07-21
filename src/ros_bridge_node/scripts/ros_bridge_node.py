@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import math
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -11,21 +12,30 @@ from paho.mqtt import client as mqtt_client
 import rospy
 import importlib
 from rospy_message_converter import json_message_converter 
+import threading
+import collections
 
 class MqttRosBridge:
     def __init__(self):
         rospy.init_node('ros_bridge_node', anonymous=True)
         
+        
+        self.message_cache = collections.defaultdict(dict)
+        self.required_topics = {
+            "1": ["target1/gps", "target1/velocity_heading", "target1/type"],
+            "2": ["target2/gps", "target2/velocity_heading", "target2/type"],  # 需要一起发送的主题组
+        }
+        self.lock = threading.Lock()  # 线程锁保证缓存操作安全
+        
+        
         # 存储所有处理器
         self.handlers = {}
-        print("12344444")
         # 从参数服务器获取MQTT配置
         self.mqtt_broker = rospy.get_param('~mqtt_broker', '')
         
         self.mqtt_port = rospy.get_param('~mqtt_port', '')
         self.mqtt_user = rospy.get_param('~mqtt_username', '')
         self.mqtt_pass = rospy.get_param('~mqtt_password', '')
-        print(self.mqtt_broker,self.mqtt_port,self.mqtt_user)
         # 加载网络到ROS的映射配置
         self.load_sub_mappings()
         client_id = f'python-mqtt-{random.randint(0, 1000)}'
@@ -33,7 +43,7 @@ class MqttRosBridge:
         self.mqtt_client = mqtt_client.Client(mqtt_client.CallbackAPIVersion.VERSION1,client_id)
         self.mqtt_client.on_connect = self.on_mqtt_connect
         self.mqtt_client.on_message = self.on_mqtt_message
-        self.mqtt_client.tls_set(ca_certs='/home/ipac-ros-server/rostest/src/ros_bridge_node/scripts/emqxsl-ca.crt')
+        # self.mqtt_client.tls_set(ca_certs='/home/ipac-ros-server/rostest/src/ros_bridge_node/scripts/emqxsl-ca.crt')
         if self.mqtt_user:
             self.mqtt_client.username_pw_set(self.mqtt_user, self.mqtt_pass)
         self.setup_ros_to_network()
@@ -47,7 +57,53 @@ class MqttRosBridge:
         # 启动MQTT循环
         self.mqtt_client.loop_start()
         
-        
+# 处理组间共同发送的逻辑
+
+    def get_group_name(self, topic):
+        """确定主题所属的组名"""
+        for group_name, topics in self.required_topics.items():
+            if topic in topics:
+                return group_name
+        return None
+   
+    def check_group_complete(self, group_name):
+        """检查组内所有主题是否都已收到消息"""
+        required = set(self.required_topics[group_name])
+        cached = set(self.message_cache[group_name].keys())
+        return required == cached
+
+    def publish_group_messages(self, group_name):
+        """发布组内所有消息并清空缓存"""
+        try:
+            # 获取组内所有消息
+            # print(self.message_cache)
+            # print(group_name)
+            messages = self.message_cache[group_name]
+            gps_data = json.loads(messages[f"target{group_name}/gps"])
+            velocity_data = json.loads(messages[f"target{group_name}/velocity_heading"])
+            type_data = json.loads(messages[f"target{group_name}/type"])
+            x = velocity_data['twist']['linear']['x']  # 东方向
+            y = velocity_data['twist']['linear']['y']  # 北方向
+            speed = math.sqrt(x**2 + y**2)
+            # 计算航向角 (0-360度，正北为0)
+            course_rad = math.atan2(x, y)  # 弧度
+            course_deg = math.degrees(course_rad) % 360
+            report_msg = {
+                "targetId": group_name,
+                "longitude": round(gps_data.get("longitude", 0.0), 6),
+                "latitude": round(gps_data.get("latitude", 0.0), 6),
+                "altitude": round(gps_data.get("altitude", 0.0), 2),
+                "speed": round(speed, 2),
+                "course": round(course_deg, 2),
+                "targetType": type_data['data'],
+            }
+            self.mqtt_client.publish(f"target/location", json.dumps(report_msg))
+            # print(report_msg)
+            
+            # 清空缓存
+            self.message_cache[group_name] = {}
+        except Exception as e:
+            rospy.logerr(f"组消息发送失败: {e}")
             
     
     def setup_ros_to_network(self):
@@ -71,22 +127,47 @@ class MqttRosBridge:
                     "url": "uav/target_detection",
                     "msg_type": "geometry_msgs/Point"
                 },
-                "/target/gps": {
-                    "url": "target/gps",
+                "/target2/gps": {
+                    "url": "target2/gps",
                     "msg_type": "sensor_msgs/NavSatFix"
                 },
-                "/target/velocity_heading": {
-                    "url": "target/velocity_heading",
+                "/target2/velocity_heading": {
+                    "url": "target2/velocity_heading",
                     "msg_type": "geometry_msgs/TwistStamped"
                 },
-                "/target/type": {
-                    "url": "target/type",
+                "/target2/type": {
+                    "url": "target2/type",
+                    "msg_type": "std_msgs/Int32"
+                },
+                "/target1/gps": {
+                    "url": "target1/gps",
+                    "msg_type": "sensor_msgs/NavSatFix"
+                },
+                "/target1/velocity_heading": {
+                    "url": "target1/velocity_heading",
+                    "msg_type": "geometry_msgs/TwistStamped"
+                },
+                "/target1/type": {
+                    "url": "target1/type",
                     "msg_type": "std_msgs/Int32"
                 },
                 "/uav/mission_feedback": {
                     "url": "uav/mission_feedback",
                     "msg_type": "std_msgs/String"
-                }
+                },
+                "/target1/image":{
+                    "url": "target1/image",
+                    "msg_type": "sensor_msgs/Image"
+                },
+                "/target2/image":{
+                    "url": "target2/image",
+                    "msg_type": "sensor_msgs/Image"
+                },
+                # "/command/mission": {
+                #     "url": "command/mission",
+                #     "msg_type": "std_msgs/String"
+                # },
+                
             }
         self.submappings = mappings
         for topic, config in mappings.items():
@@ -99,17 +180,60 @@ class MqttRosBridge:
             msg_class = parts[1]
             module = importlib.import_module(f"{pkg}.msg")
             msg_class_obj = getattr(module, msg_class)
-            rospy.Subscriber(topic, msg_class_obj, self.ros_callback, callback_args=config["url"])
-    
+            
+            #上传图像用不同的接口
+            isImage = topic.split('/')
+            # print(isImage)
+            if isImage[2] == "image":
+                # print(config)
+                rospy.Subscriber(topic, msg_class_obj, self.ros_image_callback, callback_args=config["url"])
+            else:
+                rospy.Subscriber(topic, msg_class_obj, self.ros_callback, callback_args=config["url"])
+
+    def ros_image_callback(self, msg, url):
+        try:
+            json_data = json_message_converter.convert_ros_message_to_json(msg)
+            url = url.split('/')
+            targetid = url[0][-1]
+            url = url[0][:-1] +'/'+ url[1]
+            json_data = json.loads(json_data)
+            json_data['targetId'] = targetid
+            
+            # print(json_data.keys(),url)
+            result = self.mqtt_client.publish(url,json.dumps(json_data))
+            # status = result[0]
+            # if status == 0:
+            #   print(f"Send `{msg}` to topic `{url}`")
+            # else:
+            #   print(f"Failed to send message to topic {url}")
+        except Exception as e:
+            rospy.logerr(f"Failed to POST to {url}: {e}")
+
     def ros_callback(self, msg, url):
         try:
             json_data = json_message_converter.convert_ros_message_to_json(msg)
-            result = self.mqtt_client.publish(url,json_data)
-            status = result[0]
+            group_name = self.get_group_name(url)
+            # print(group_name)
+            topic = url
+            if group_name:
+                # 线程安全地更新缓存
+                with self.lock:
+                    self.message_cache[group_name][topic] = json_data
+                    
+                    rospy.logdebug(f"缓存消息: group={group_name}, topic={topic}")
+                    
+                    # 检查是否收集齐所有消息
+                    if self.check_group_complete(group_name):
+                        self.publish_group_messages(group_name)
+            else:
+                # 不属于组的消息直接发送
+                self.mqtt_client.publish(topic, json_data)
+            #result = self.mqtt_client.publish(url,json_data)
+            #status = result[0]
             # if status == 0:
-                # print(f"Send `{msg}` to topic `{url}`")
+            #   print(f"Send `{msg}` to topic `{url}`")
             # else:
-                # print(f"Failed to send message to topic {url}")
+            #   print(f"Failed to send message to topic {url}")
         except Exception as e:
             rospy.logerr(f"Failed to POST to {url}: {e}")
         
@@ -131,6 +255,15 @@ class MqttRosBridge:
                         "url": "command/mission",
                         "msg_type": "std_msgs/String"
                     },
+                    "/command/strike_confirm": {
+                        "url": "command/strike_confirm",
+                        "msg_type": "std_msgs/String"
+                    },
+                #     "/target/location": {
+                #         "url": "target/location",
+                #         "msg_type": "std_msgs/String"
+                # },
+                    
                 }
             
             # 处理每个映射
@@ -192,7 +325,8 @@ class MqttRosBridge:
             return ControlCommandHandler(publisher, log_name)
         elif msg_type == "sensor_msgs/NavSatFix":
             return LocationHandler(publisher, log_name)
-        
+        else:
+            return StrikeCommandHandler(publisher, log_name)
         # 对于其他类型，尝试使用通用JSON处理器
         try:
             rospy.logwarn(f"使用通用JSON处理器处理 {msg_type}")
@@ -203,7 +337,7 @@ class MqttRosBridge:
 
     def on_mqtt_connect(self, client, userdata, flags, rc):
         rospy.loginfo(f"MQTT连接状态: {rc}")
-        print(self.handlers)
+        # print(self.handlers)
         if rc == 0:
             # 订阅所有处理器对应的主题
             # for topic in self.submappings.keys():
