@@ -2,6 +2,8 @@ source devel/setup.bash
 
 # 搜索模式
 rostopic pub -r 10 /gimbal/cmd gimbal_bridge_node/GimbalCmd "{yaw: 0.0, pitch: 0.0, gimbal_state_machine: 0, zoom_in_state: 0, json_string: ''}"
+rostopic pub -r 100 /gimbal/cmd gimbal_bridge_node/GimbalCmd "{yaw: 0.0, pitch: 0.0, gimbal_state_machine: 0, zoom_in_state: 0, json_string: ''}"
+
 
 # 跟踪模式
 rostopic pub -r 10 /gimbal/cmd gimbal_bridge_node/GimbalCmd "{yaw: 0.0, pitch: 0.0, gimbal_state_machine: 1, zoom_in_state: 0, json_string: ''}"
@@ -10,7 +12,7 @@ rostopic pub -r 10 /gimbal/cmd gimbal_bridge_node/GimbalCmd "{yaw: 0.0, pitch: 0
 rosrun gimbal_bridge_node gimbal_state_publisher
 
 # 录包
-rosbag record --duration=50 /gimbal/state /mavros/imu/data /gimbal/cmd
+rosbag record --duration=50 /gimbal/state /mavros/imu/data /gimbal/cmd /gimbal/debug
 
 # 启动mavros节点
 roslaunch launch_all_node sys.launch

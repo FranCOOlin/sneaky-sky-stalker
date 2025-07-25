@@ -655,7 +655,7 @@ uint16_t siyi_pack_control_angle(uint8_t *bag, uint16_t max_bag_len, int16_t yaw
     request.yaw = yaw;
     request.pitch = pitch;
 
-    return siyi_pack_data(CMD_CONTROL_ANGLE, false, (const uint8_t *)&request, sizeof(request), seq, bag, max_bag_len);
+    return siyi_pack_data(CMD_CONTROL_ANGLE, true, (const uint8_t *)&request, sizeof(request), seq, bag, max_bag_len);
 }
 
 /**

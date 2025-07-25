@@ -54,6 +54,7 @@ FILES
 #   Message2.msg
 GimbalState.msg
 GimbalCmd.msg
+GimbalDebug.msg
  )
 
 ## Generate services in the 'srv' folder

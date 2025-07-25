@@ -10,6 +10,7 @@
 #include <gimbal_bridge_node/siyi_zr10_protocol.h>
 #include <gimbal_bridge_node/GimbalState.h>
 #include <gimbal_bridge_node/GimbalCmd.h>
+#include <gimbal_bridge_node/GimbalDebug.h>
 #include <sensor_msgs/Imu.h>
 
 constexpr int RECV_BUF_SIZE = 64;
@@ -163,9 +164,11 @@ public:
             }
             return false;
         }
+        this->gimbal_yaw_feed = static_cast<float>(response.yaw) / 10.0f;
+        this->gimbal_pitch_feed = static_cast<float>(response.pitch) / 10.0f;
         gimbal_bridge_node::GimbalState msg;
-        msg.yaw = static_cast<float>(response.yaw) / 10.0f;
-        msg.pitch = static_cast<float>(response.pitch) / 10.0f;
+        msg.yaw = this->gimbal_yaw_feed;
+        msg.pitch = this->gimbal_pitch_feed;
         msg.roll = static_cast<float>(response.roll) / 10.0f;
         msg.json_string = "{\"status\":\"normal\"}";
         // 发布消息
@@ -262,6 +265,15 @@ public:
     {
         zoom_in = zoom;
     }
+
+    void set_debug_publisher(ros::Publisher &&debug_pub)
+    {
+        this->debug_pub = std::move(debug_pub);
+    }
+
+    ros::Publisher debug_pub;
+    float gimbal_pitch_feed = 0.0f; // 云台俯仰角
+    float gimbal_yaw_feed = 0.0f;   // 云台偏航角
 
 private:
     static constexpr int RECV_BUF_SIZE = 64;
@@ -361,6 +373,20 @@ void gimbal_cmd_callback(const gimbal_bridge_node::GimbalCmd::ConstPtr &msg)
             ROS_ERROR("Failed to execute zoom in command.");
         }
     }
+
+    // debug
+    gimbal_bridge_node::GimbalDebug debug_msg;
+    debug_msg.gimbal_yaw = gimbal_bridge.gimbal_yaw_feed;
+    debug_msg.gimbal_pitch = gimbal_bridge.gimbal_pitch_feed;
+    debug_msg.gimbal_state_machine = gimbal_bridge.get_state_machine();
+    debug_msg.zoom_in_state = gimbal_bridge.is_zoom_in() ? 1 : 0;
+    debug_msg.drone_pitch = drone_pitch_deg;
+    debug_msg.gimbal_yaw_cmd = gimbal_cmd.yaw;
+    debug_msg.gimbal_pitch_cmd = gimbal_cmd.pitch;
+    if (gimbal_bridge.debug_pub)
+    {
+        gimbal_bridge.debug_pub.publish(debug_msg);
+    }
 }
 
 void drone_attitude_callback(const sensor_msgs::Imu::ConstPtr &msg)
@@ -391,6 +417,7 @@ int main(int argc, char **argv)
     pub = nh.advertise<gimbal_bridge_node::GimbalState>("/gimbal/state", 10);
     ros::Subscriber gimbal_attitude_sub = nh.subscribe("/gimbal/cmd", 3, gimbal_cmd_callback);
     ros::Subscriber drone_attitude_sub = nh.subscribe<sensor_msgs::Imu>("/mavros/imu/data", 3, drone_attitude_callback);
+    gimbal_bridge.set_debug_publisher(nh.advertise<gimbal_bridge_node::GimbalDebug>("/gimbal/debug", 10));
 
     // 设置循环频率 (100Hz)
     ros::Rate loop_rate(101);
