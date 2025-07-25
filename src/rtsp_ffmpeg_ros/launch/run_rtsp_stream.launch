@@ -17,7 +17,14 @@
       <param name="flip_horizontal" type="bool" value="$(arg flip_horizontal)" />
       <param name="flip_vertical" type="bool" value="$(arg flip_vertical)" />
     </node>
+    
+    <node pkg="gimbal_bridge_node" type="gimbal_state_publisher.py" name="gimbal_state_publisher" output="screen"> 
+    
+    </node>
+    
   </group>
+
+  
 
   <!-- <include file="$(find image_processor)/launch/image_resize.launch" /> -->
 </launch>

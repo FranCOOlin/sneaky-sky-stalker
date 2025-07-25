@@ -4,7 +4,7 @@ import pathlib
 plt =platform.system()
 if plt != 'Windows':
     pathlib.WindowsPath =pathlib.PosixPath
-import rospy
+import rospy,math
 import cv2
 import torch
 import torch.backends.cudnn as cudnn
@@ -17,7 +17,7 @@ from rostopic import get_topic_type
 
 from sensor_msgs.msg import Image, CompressedImage
 from detection_msgs.msg import BoundingBox, BoundingBoxes
-from gimbal_bridge_node.msg import GimbalCmd  
+from gimbal_bridge_node.msg import GimbalCmd,GimbalState
 
 
 from nav_msgs.msg import Odometry
@@ -59,6 +59,11 @@ class Yolov5Detector:
                                                 self.mavros_pose_callback,       # 回调函数
                                                 queue_size=1)
        
+        self.camera_pose_sub = rospy.Subscriber("/gimbal/state",
+                                                 GimbalState,self.camera_pose_callback,
+                                                 queue_size=1)
+        
+        k=1
         self.current_z = 0.0
         # Initialize weights 
         weights = rospy.get_param("~weights")
@@ -131,9 +136,9 @@ class Yolov5Detector:
 
         # Initialize CV_Bridge
         self.bridge = CvBridge()
-        self.K = np.array(rospy.get_param("~camera_intrinsic_matrix",[1931.5616206, 0.0, 956.5344838, 0.0, 1931.7249071, 531.7483834, 0.0, 0.0, 1.0])).reshape((3, 3))
+        self.K = np.array(rospy.get_param("~camera_intrinsic_matrix",[1931.5616206*k, 0.0, 956.5344838, 0.0, 1931.7249071*k, 531.7483834, 0.0, 0.0, 1.0])).reshape((3, 3))
         #self.K = np.array(rospy.get_param("~camera_intrinsic_matrix",[369.502083, 0.0, 640.0, 0.0, 369.502083, 360.0, 0.0, 0.0, 1.0])).reshape((3, 3))
-        self.R = np.array(rospy.get_param("~camera_rotation_matrix",[0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0])).reshape((3, 3))
+        #self.R = np.array(rospy.get_param("~camera_rotation_matrix",[0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0])).reshape((3, 3))
         self.t = np.array(rospy.get_param("~camera_translation_vector",[-0.0, 0.0, 0.0])).reshape((3, 1))
 
         # self.odom_sub = rospy.Subscriber(
@@ -145,8 +150,27 @@ class Yolov5Detector:
         pos_y = msg.pose.position.y
         pos_z = msg.pose.position.z
         self.current_z = pos_z
+    
+    def camera_pose_callback(self,msg):
+        camera_yaw = msg.yaw
+        camera_pitch = msg.pitch
+        camera_roll = msg.roll
+        A = math.sin(camera_yaw)
+        B = math.cos(camera_yaw)
+        C = math.sin(camera_pitch)
+        D = math.cos(camera_pitch)
+        E = math.sin(camera_roll)
+        F = math.cos(camera_roll)
 
-        
+        self.R = np.array([
+            [B*D,B*C*E-A*F,B*C*F+A*E],
+            [A*D,A*C*E+B*F,A*C*F-B*E],
+            [-C,D*E,D*F]
+        ])
+
+
+
+
 
     # def odom_callback(self, msg):
     #     """处理 odom 消息"""
@@ -173,8 +197,6 @@ class Yolov5Detector:
         return world_coords.flatten()
 
 
-
-
     def update_state(self, current_ship_detected):
         """状态机核心逻辑：根据当前检测结果更新状态并发送指令"""
         # 1. 确定当前状态
@@ -190,18 +212,21 @@ class Yolov5Detector:
 
         if new_state == "DETECTED_SHIP":
             # 检测到船时，设置gimbal_state_machine为3
-            gimbal_msg.gimbal_state_machine = 3  
+            gimbal_msg.zoom_in_state = 1
+            k=2  
             rospy.loginfo("状态切换：检测到船，发送gimbal_state_machine: 3")
         else:
             # 未检测到船时，设置gimbal_state_machine为1（或其他需求值）
-            gimbal_msg.gimbal_state_machine = 0  
+            gimbal_msg.zoom_in_state = 0
+            k=1  
             rospy.loginfo("状态切换：未检测到船，发送gimbal_state_machine: 0")
 
         # 发布指令
-        self.gimbal_state_pub.publish(gimbal_msg)
+        self.gimbal_cmd_pub.publish(gimbal_msg)
         
         # 更新上一帧状态
         self.prev_ship_detected = current_ship_detected
+        self.K = np.array([1931.5616206*k, 0.0, 956.5344838, 0.0, 1931.7249071*k, 531.7483834, 0.0, 0.0, 1.0]).reshape((3, 3))
 
 
     def callback(self, data):

@@ -373,7 +373,6 @@ int main(int argc, char **argv)
     std::cout << 3 << std::endl;
     gimbal_bridge.request_gimbal_state();
     std::cout << 4 << std::endl;
-    // ros::spin();
 
     while (ros::ok())
     {
