@@ -10,6 +10,7 @@
 #include <gimbal_bridge_node/siyi_zr10_protocol.h>
 #include <gimbal_bridge_node/GimbalState.h>
 #include <gimbal_bridge_node/GimbalCmd.h>
+#include <sensor_msgs/Imu.h>
 
 constexpr int RECV_BUF_SIZE = 64;
 constexpr int SERVER_PORT = 37260;
@@ -19,7 +20,11 @@ constexpr char SERVER_IP[] = "192.168.144.25";
 ros::Publisher pub;
 
 // 创建 Subscriber，订阅云台控制指令
-ros::Subscriber sub;
+ros::Subscriber gimbal_attitude_sub;
+
+ros::Subscriber drone_attitude_sub;
+
+float drone_pitch_deg = 0.0f; // 当前俯仰角 
 
 class gimbal_camera_state_bridge
 {
@@ -44,11 +49,13 @@ public:
         }
         ROS_INFO("Socket created successfully, ready to send data to %s:%d", server_ip_.c_str(), server_port_);
     }
+
     ~gimbal_camera_state_bridge()
     {
         close(sockfd);
     }
-    void ping()
+
+    int ping()
     {
         // 定义请求数据
         uint8_t send_buf[RECV_BUF_SIZE] = {0};
@@ -56,17 +63,15 @@ public:
         if (request_length == 0)
         {
             ROS_ERROR("Failed to pack request data");
-            return;
+            return 0;
         }
-        ROS_INFO("Packed request data length: %d", request_length);
 
         // 发送数据
         if (sendto(sockfd, send_buf, request_length, 0,
                    (struct sockaddr *)&send_addr_, sizeof(send_addr_)) < 0)
         {
             ROS_ERROR("sendto failed: %s", strerror(errno));
-            close(sockfd);
-            return;
+            return 0;
         }
         // 接收响应
         struct sockaddr_in recv_addr;
@@ -77,8 +82,7 @@ public:
         if (recv_len < 0)
         {
             ROS_ERROR("recvfrom failed: %s", strerror(errno));
-            close(sockfd);
-            return;
+            return 0;
         }
         FirmwareVersionResponse response;
 
@@ -86,13 +90,15 @@ public:
         if (!siyi_unpack_firmware_version_response(recv_buf, recv_len, &response))
         {
             ROS_ERROR("Failed to unpack response data");
-            return;
+            return 0;
         }
         // 打印接收到的数据
-        ROS_INFO("Get firmware version response:");
+        ROS_INFO("Connected to gimbal, Get firmware version response:");
         ROS_INFO("Code Board Version: %u", response.code_board_ver);
         ROS_INFO("Gimbal Firmware Version: %u", response.gimbal_firmware_ver);
         ROS_INFO("Zoom Firmware Version: %u", response.zoom_firmware_ver);
+
+        return 1;
     }
 
     void set_func_mode(FunctionType mode)
@@ -110,7 +116,6 @@ public:
                    (struct sockaddr *)&send_addr_, sizeof(send_addr_)) < 0)
         {
             ROS_ERROR("sendto failed: %s", strerror(errno));
-            close(sockfd);
             return;
         }
     }
@@ -308,7 +313,7 @@ void gimbal_cmd_callback(const gimbal_bridge_node::GimbalCmd::ConstPtr &msg)
     {
         // 云台状态机为0时，云台指向前下方（pitch = -45， yaw=0）
         ROS_INFO("Gimbal is set to point forward downwards (pitch=-45, yaw=0).");
-        gimbal_cmd.pitch = -45;
+        gimbal_cmd.pitch = drone_pitch_deg - 45;
         gimbal_cmd.yaw = 0;
     }
     else if (gimbal_cmd.gimbal_state_machine == 1)
@@ -354,25 +359,41 @@ void gimbal_cmd_callback(const gimbal_bridge_node::GimbalCmd::ConstPtr &msg)
     }
 }
 
+void drone_attitude_callback(const sensor_msgs::Imu::ConstPtr &msg)
+{
+    // 从IMU消息中获取四元数
+    double qx = msg->orientation.x;
+    double qy = msg->orientation.y;
+    double qz = msg->orientation.z;
+    double qw = msg->orientation.w;
+    
+    // 计算俯仰角 (pitch)，单位为弧度
+    // 使用四元数到欧拉角的转换公式
+    double pitch = atan2(2.0 * (qw * qy - qz * qx), 
+                        1.0 - 2.0 * (qy * qy + qx * qx));
+    
+    // 可选：转换为角度（方便人类阅读）
+    drone_pitch_deg = pitch * 180.0 / M_PI;
+    
+    // 可以在这里使用计算得到的俯仰角，例如打印输出
+    ROS_INFO("current pitch: %.2f rad (%.2f deg)", pitch, drone_pitch_deg);
+}
+
 int main(int argc, char **argv)
 {
     // 初始化 ROS 节点
     ros::init(argc, argv, "gimbal_state_publisher");
     ros::NodeHandle nh;
     pub = nh.advertise<gimbal_bridge_node::GimbalState>("/gimbal/state", 10);
-    sub = nh.subscribe("/gimbal/cmd", 3, gimbal_cmd_callback);
+    gimbal_attitude_sub = nh.subscribe("/gimbal/cmd", 3, gimbal_cmd_callback);
+    drone_attitude_sub = nh.subscribe<sensor_msgs::Imu>("/mavros/imu/data", 3, drone_attitude_callback);
 
     // 设置循环频率 (100Hz)
     ros::Rate loop_rate(101);
 
-    // gimbal_camera_state_bridge gimbal_bridge(SERVER_IP, SERVER_PORT);
-    std::cout << 1 << std::endl;
-    gimbal_bridge.ping();
-    std::cout << 2 << std::endl;
+    while(gimbal_bridge.ping()==0){};
     gimbal_bridge.set_func_mode(FUNC_MODE_FPV);
-    std::cout << 3 << std::endl;
     gimbal_bridge.request_gimbal_state();
-    std::cout << 4 << std::endl;
 
     while (ros::ok())
     {

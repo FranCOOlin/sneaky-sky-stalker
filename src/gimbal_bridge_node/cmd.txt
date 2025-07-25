@@ -1,0 +1,7 @@
+source devel/setup.bash
+
+rostopic pub -r 10 /gimbal/cmd gimbal_bridge_node/GimbalCmd "{yaw: 0.0, pitch: 0.0, gimbal_state_machine: 0, zoom_in_state: 0, json_string: ''}"
+
+rosrun gimbal_bridge_node gimbal_state_publisher
+
+rosbag record --duration=50 /gimbal/state /mavros/imu/data /gimbal/cmd
