@@ -19,12 +19,7 @@ constexpr char SERVER_IP[] = "192.168.144.25";
 // 创建 Publisher，Topic 名字和消息类型
 ros::Publisher pub;
 
-// 创建 Subscriber，订阅云台控制指令
-ros::Subscriber gimbal_attitude_sub;
-
-ros::Subscriber drone_attitude_sub;
-
-float drone_pitch_deg = 0.0f; // 当前俯仰角 
+float drone_pitch_deg = 0.0f; // 当前俯仰角
 
 class gimbal_camera_state_bridge
 {
@@ -275,7 +270,7 @@ private:
     struct sockaddr_in send_addr_;
     int sockfd;
     int state_machine = 0; // 云台状态机，0:前下方，1:正下方，2:自由控制
-    bool zoom_in = false; // 是否处于变倍状态
+    bool zoom_in = false;  // 是否处于变倍状态
 };
 
 // 初始化云台桥接类
@@ -342,18 +337,27 @@ void gimbal_cmd_callback(const gimbal_bridge_node::GimbalCmd::ConstPtr &msg)
         ROS_INFO("Gimbal command executed successfully.");
     }
 
-    if (gimbal_cmd.zoom_in_state == 0 && gimbal_bridge.is_zoom_in()) {
-        if (gimbal_bridge.execute_zoom_out_command()) {
+    if (gimbal_cmd.zoom_in_state == 0 && gimbal_bridge.is_zoom_in())
+    {
+        if (gimbal_bridge.execute_zoom_out_command())
+        {
             ROS_INFO("Zoom out command executed successfully.");
             gimbal_bridge.set_zoom_in(false);
-        } else {
+        }
+        else
+        {
             ROS_ERROR("Failed to execute zoom out command.");
         }
-    } else if (gimbal_cmd.zoom_in_state == 1 && !gimbal_bridge.is_zoom_in()) {
-        if (gimbal_bridge.execute_zoom_in_command()) {
+    }
+    else if (gimbal_cmd.zoom_in_state == 1 && !gimbal_bridge.is_zoom_in())
+    {
+        if (gimbal_bridge.execute_zoom_in_command())
+        {
             ROS_INFO("Zoom in command executed successfully.");
             gimbal_bridge.set_zoom_in(true);
-        } else {
+        }
+        else
+        {
             ROS_ERROR("Failed to execute zoom in command.");
         }
     }
@@ -366,15 +370,15 @@ void drone_attitude_callback(const sensor_msgs::Imu::ConstPtr &msg)
     double qy = msg->orientation.y;
     double qz = msg->orientation.z;
     double qw = msg->orientation.w;
-    
+
     // 计算俯仰角 (pitch)，单位为弧度
     // 使用四元数到欧拉角的转换公式
-    double pitch = atan2(2.0 * (qw * qy - qz * qx), 
-                        1.0 - 2.0 * (qy * qy + qx * qx));
-    
+    double pitch = atan2(2.0 * (qw * qy - qz * qx),
+                         1.0 - 2.0 * (qy * qy + qx * qx));
+
     // 可选：转换为角度（方便人类阅读）
     drone_pitch_deg = pitch * 180.0 / M_PI;
-    
+
     // 可以在这里使用计算得到的俯仰角，例如打印输出
     ROS_INFO("current pitch: %.2f rad (%.2f deg)", pitch, drone_pitch_deg);
 }
@@ -385,13 +389,15 @@ int main(int argc, char **argv)
     ros::init(argc, argv, "gimbal_state_publisher");
     ros::NodeHandle nh;
     pub = nh.advertise<gimbal_bridge_node::GimbalState>("/gimbal/state", 10);
-    gimbal_attitude_sub = nh.subscribe("/gimbal/cmd", 3, gimbal_cmd_callback);
-    drone_attitude_sub = nh.subscribe<sensor_msgs::Imu>("/mavros/imu/data", 3, drone_attitude_callback);
+    ros::Subscriber gimbal_attitude_sub = nh.subscribe("/gimbal/cmd", 3, gimbal_cmd_callback);
+    ros::Subscriber drone_attitude_sub = nh.subscribe<sensor_msgs::Imu>("/mavros/imu/data", 3, drone_attitude_callback);
 
     // 设置循环频率 (100Hz)
     ros::Rate loop_rate(101);
 
-    while(gimbal_bridge.ping()==0){};
+    while (gimbal_bridge.ping() == 0)
+    {
+    };
     gimbal_bridge.set_func_mode(FUNC_MODE_FPV);
     gimbal_bridge.request_gimbal_state();
 
