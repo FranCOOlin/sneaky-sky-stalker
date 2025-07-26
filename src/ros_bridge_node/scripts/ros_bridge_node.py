@@ -7,13 +7,22 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import random
 # 现在可以直接导入
 # from MessageHandler import ControlCommandHandler, StrikeCommandHandler, LocationHandler
-from MessageHandler import ControlCommandHandler, StrikeCommandHandler, LocationHandler
+from MessageHandler import ControlCommandHandler, StrikeCommandHandler, LocationHandler, TargetidConfirmHandler, YZLocationHandler
+import MessageHandler
 from paho.mqtt import client as mqtt_client
 import rospy
 import importlib
 from rospy_message_converter import json_message_converter 
 import threading
 import collections
+from sensor_msgs.msg import NavSatFix
+from geometry_msgs.msg import TwistStamped, Vector3
+
+Targetid_Map = {
+    "1" : 0,
+    "2" : 0,
+}
+
 
 class MqttRosBridge:
     def __init__(self):
@@ -36,6 +45,7 @@ class MqttRosBridge:
         self.mqtt_port = rospy.get_param('~mqtt_port', '')
         self.mqtt_user = rospy.get_param('~mqtt_username', '')
         self.mqtt_pass = rospy.get_param('~mqtt_password', '')
+        print(self.mqtt_broker,self.mqtt_port,self.mqtt_user)
         # 加载网络到ROS的映射配置
         self.load_sub_mappings()
         client_id = f'python-mqtt-{random.randint(0, 1000)}'
@@ -97,7 +107,18 @@ class MqttRosBridge:
                 "course": round(course_deg, 2),
                 "targetType": type_data['data'],
             }
+            report2YZ = {
+                "targetId": Targetid_Map[group_name],
+                "id": group_name,
+                "longitude": round(gps_data.get("longitude", 0.0), 7),
+                "latitude": round(gps_data.get("latitude", 0.0), 7),
+                "speed": round(speed),
+                "heading": round(course_deg),
+                "type": type_data['data'],
+            }
+            # print(report2YZ)
             self.mqtt_client.publish(f"target/location", json.dumps(report_msg))
+            self.mqtt_client.publish(f"target/location2YZ", json.dumps(report2YZ))
             # print(report_msg)
             
             # 清空缓存
@@ -167,6 +188,7 @@ class MqttRosBridge:
                 #     "url": "command/mission",
                 #     "msg_type": "std_msgs/String"
                 # },
+                
                 
             }
         self.submappings = mappings
@@ -259,6 +281,14 @@ class MqttRosBridge:
                         "url": "command/strike_confirm",
                         "msg_type": "std_msgs/String"
                     },
+                    "/target/location2UAV":{
+                        "url": "target/location2UAV",
+                        "msg_type": "sensor_msgs/NavSatFix"
+                    },
+                    "/confirm/targetid":{
+                        "url": "confirm/targetid",
+                        "msg_type": "std_msgs/String"
+                    }
                 #     "/target/location": {
                 #         "url": "target/location",
                 #         "msg_type": "std_msgs/String"
@@ -275,13 +305,18 @@ class MqttRosBridge:
                     rospy.logerr(f"无效映射配置: {ros_topic} - {config}")
                     continue
                 
-                # 创建ROS发布器
+                # targetid矫正和 YZ发来的目标信息的消息需要单独处理
+
                 publisher = self.create_publisher(ros_topic, msg_type)
                 if not publisher:
                     continue
                 
                 # 创建对应的消息处理器
-                handler = self.create_handler(publisher, msg_type, f"{mqtt_topic}->{ros_topic}")
+                if mqtt_topic in ["confirm/targetid", "target/location2UAV"]:
+                    # print("yes")
+                    handler = self.create_handler(publisher, mqtt_topic, f"{mqtt_topic}->{ros_topic}")
+                else:
+                    handler = self.create_handler(publisher, msg_type, f"{mqtt_topic}->{ros_topic}")
                 if not handler:
                     continue
                 
@@ -323,6 +358,10 @@ class MqttRosBridge:
         # 简化处理：使用特定处理器处理常见类型
         if msg_type == "std_msgs/String":
             return ControlCommandHandler(publisher, log_name)
+        elif msg_type == "confirm/targetid":
+            return TargetidConfirmHandler(publisher, log_name)
+        elif msg_type == "target/location2UAV": # 云州发过来的单独处理
+            return YZLocationHandler(publisher, log_name)
         elif msg_type == "sensor_msgs/NavSatFix":
             return LocationHandler(publisher, log_name)
         else:
@@ -361,9 +400,18 @@ class MqttRosBridge:
         rospy.logdebug(f"收到MQTT消息 [{topic}]: {payload[:100]}{'...' if len(payload) > 100 else ''}")
         
         # 查找对应的处理器
+        
+            
         handler = self.handlers.get(topic)
         if handler:
-            handler.handle(payload)
+            if topic == "confirm/targetid":
+                global Targetid_Map
+                Targetid_Map = handler.handle(payload)
+            elif topic == "target/location2UAV":
+                handler.targetidmap = Targetid_Map
+                handler.handle(payload)
+            else:
+                handler.handle(payload)
         else:
             rospy.logwarn(f"未注册的MQTT主题: {topic}")
 
@@ -372,7 +420,7 @@ class MqttRosBridge:
         # 创建ROS发布器
         publisher = self.create_publisher(ros_topic, msg_type)
         if not publisher:
-            return False
+            publisher = None
         
         # 创建消息处理器
         handler = self.create_handler(publisher, msg_type, f"{url}->{ros_topic}")
