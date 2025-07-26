@@ -7,6 +7,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <deque>
+#include <algorithm>
 #include <gimbal_bridge_node/siyi_zr10_protocol.h>
 #include <gimbal_bridge_node/GimbalState.h>
 #include <gimbal_bridge_node/GimbalCmd.h>
@@ -23,6 +25,24 @@ constexpr char SERVER_IP[] = "192.168.144.25";
 ros::Publisher pub;
 
 float drone_pitch_deg = 0.0f; // 当前俯仰角
+
+// 定义目标结构体
+struct TargetInfo
+{
+    std::string class_name;
+    double probability;
+    double center_x;
+    double center_y;
+    double center_z;
+    int64_t xmin;
+    int64_t ymin;
+    int64_t xmax;
+    int64_t ymax;
+};
+
+// 全局变量：保存最近5帧的目标队列
+std::deque<std::vector<TargetInfo>> target_history_queue;
+constexpr size_t MAX_QUEUE_SIZE = 5;
 
 class gimbal_camera_state_bridge
 {
@@ -411,6 +431,73 @@ void drone_attitude_callback(const sensor_msgs::Imu::ConstPtr &msg)
     ROS_INFO("current pitch: %.2f rad (%.2f deg)", pitch, drone_pitch_deg);
 }
 
+void bounding_boxes_callback(const detection_msgs::BoundingBoxes::ConstPtr &msg)
+{
+    // 1. 显示检测到的目标数量
+    ROS_INFO("Received %zu bounding boxes", msg->bounding_boxes.size());
+
+    // 2. 处理当前帧的目标
+    std::vector<TargetInfo> current_frame_targets;
+
+    for (const auto &box : msg->bounding_boxes)
+    {
+        // 计算目标中心坐标
+        double center_x = (box.xmin + box.xmax) / 2.0;
+        double center_y = (box.ymin + box.ymax) / 2.0;
+
+        TargetInfo target;
+        target.class_name = box.Class;
+        target.probability = box.probability;
+        target.center_x = center_x;
+        target.center_y = center_y;
+        target.center_z = box.z;
+        target.xmin = box.xmin;
+        target.ymin = box.ymin;
+        target.xmax = box.xmax;
+        target.ymax = box.ymax;
+
+        current_frame_targets.push_back(target);
+
+        ROS_INFO("Target: Class=%s, Prob=%.2f, Center=(%.1f, %.1f), Box=[%ld, %ld, %ld, %ld]",
+                 box.Class.c_str(), box.probability, center_x, center_y,
+                 box.xmin, box.ymin, box.xmax, box.ymax);
+    }
+
+    // 3. 按可信度排序，取前两个目标
+    std::sort(current_frame_targets.begin(), current_frame_targets.end(),
+              [](const TargetInfo &a, const TargetInfo &b)
+              {
+                  return a.probability > b.probability;
+              });
+
+    if (current_frame_targets.size() > 2)
+    {
+        current_frame_targets.resize(2);
+    }
+
+    // 4. 更新队列
+    target_history_queue.push_back(current_frame_targets);
+
+    // 保持队列长度为5
+    if (target_history_queue.size() > MAX_QUEUE_SIZE)
+    {
+        target_history_queue.pop_front();
+    }
+
+    // 5. 打印队列状态
+    ROS_INFO("Target history queue size: %zu/%zu", target_history_queue.size(), MAX_QUEUE_SIZE);
+    for (size_t i = 0; i < target_history_queue.size(); ++i)
+    {
+        const auto &frame_targets = target_history_queue[i];
+        ROS_INFO("Frame %zu: %zu targets", i, frame_targets.size());
+        for (const auto &target : frame_targets)
+        {
+            ROS_INFO("  - %s (prob: %.2f, center: %.1f, %.1f)",
+                     target.class_name.c_str(), target.probability, target.center_x, target.center_y);
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     // 初始化 ROS 节点
@@ -419,6 +506,7 @@ int main(int argc, char **argv)
     pub = nh.advertise<gimbal_bridge_node::GimbalState>("/gimbal/state", 10);
     ros::Subscriber gimbal_attitude_sub = nh.subscribe("/gimbal/cmd", 3, gimbal_cmd_callback);
     ros::Subscriber drone_attitude_sub = nh.subscribe<sensor_msgs::Imu>("/mavros/imu/data", 3, drone_attitude_callback);
+    ros::Subscriber bounding_boxes_sub = nh.subscribe<detection_msgs::BoundingBoxes>("/yolov5/detections", 3, bounding_boxes_callback);
 
     gimbal_bridge.set_debug_publisher(nh.advertise<gimbal_bridge_node::GimbalDebug>("/gimbal/debug", 10));
 

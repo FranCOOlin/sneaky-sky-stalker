@@ -1,7 +1,7 @@
 <launch>
     <!-- Detection configuration -->
-    <arg name="weights" default="/home/nvidia/sneaky-sky-stalker/src/vision_recognition_node/pt/best.pt" />
-    <arg name="data" default="/home/nvidia/sneaky-sky-stalker/src/vision_recognition_node/yaml/cvc1.yaml" />
+    <arg name="weights" default="/home/nvidia/sneaky-sky-stalker/src/vision_recognition_node/src/yolov5/best2.engine" />
+    <arg name="data" default="/home/nvidia/sneaky-sky-stalker/src/vision_recognition_node/yaml/cvc2.yaml" />
     <arg name="confidence_threshold" default="0.5" />
     <arg name="iou_threshold" default="0.45" />
     <arg name="maximum_detections" default="1000" />
@@ -9,17 +9,17 @@
     <arg name="agnostic_nms" default="true" />
     <arg name="line_thickness" default="3" />
     <arg name="dnn" default="true" />
-    <arg name="half" default="false" />
+    <arg name="half" default="true" />
 
     <!-- replace imgsz -->
-    <arg name="inference_size_h" default="480" />
+    <arg name="inference_size_h" default="640" />
     <arg name="inference_size_w" default="640" />
 
     <!-- Visualize using OpenCV window -->
-    <arg name="view_image" default="true" />
+    <arg name="view_image" default="false" />
 
     <!-- ROS topics -->
-    <arg name="input_image_topic" default="/camera/color/image_raw" />
+    <arg name="input_image_topic" default="/gimbal_camera/image_raw" />
     <arg name="output_topic" default="/yolov5/detections" />
 
     <!-- Optional topic (publishing annotated image) -->
@@ -27,12 +27,12 @@
     <arg name="output_image_topic" default="/yolov5/image_out" />
 
     <!-- capture -->
-    <arg name="enable_shape_capture" default="true" /> 
+    <arg name="enable_shape_capture" default="false" /> 
     <arg name="cylinder_class" default="cylinder" />   
     <arg name="cone_class" default="cone" />   
     
     <!-- Bbox ENU Converter  -->
-    <arg name="enable_bbox_converter" default="true" /> 
+    <arg name="enable_bbox_converter" default="false" /> 
     <arg name="output_enu_topic" default="/yolov5/detections_enu" />  
     <arg name="drone_pose_topic" default="/mavros/local_position/local" />
     
@@ -40,7 +40,7 @@
     <arg name="ship_class" default="ship" /> 
     
     <!-- boat_capture -->
-    <arg name="enable_ship_controller" default="true" />
+    <arg name="enable_ship_controller" default="false" />
     
     
          

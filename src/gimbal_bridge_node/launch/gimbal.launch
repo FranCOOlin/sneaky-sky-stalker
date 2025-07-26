@@ -1,0 +1,19 @@
+<launch>
+    <!-- 可选：设置时间戳参数 -->
+    <arg name="timestamp" default="$(env USER)-$(anon 'gimbal')"/>
+    
+    <!-- 启动云台状态发布节点 -->
+    <node name="gimbal_state_publisher" pkg="gimbal_bridge_node" type="gimbal_state_publisher" output="screen"/>
+    
+    <!-- 启动rosbag录制，解决buffer不足问题 使用buffsize参数增加缓冲区大小，chunksize参数优化写入性能-->
+    <node name="rosbag_record" pkg="rosbag" type="record" 
+            args="--buffsize=0 --chunksize=1024 -o /home/nvidia/bag/gimbal_record_$(arg timestamp).bag 
+                /gimbal/state 
+                /mavros/imu/data 
+                /gimbal/cmd 
+                /gimbal/debug 
+                /yolov5/detections 
+                /gimbal_camera/image_raw/compressed"
+          output="screen">
+    </node>
+</launch>

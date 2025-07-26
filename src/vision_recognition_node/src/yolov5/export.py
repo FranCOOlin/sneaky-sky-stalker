@@ -43,7 +43,10 @@ TensorFlow.js:
     $ ln -s ../../yolov5/yolov5s_web_model public/yolov5s_web_model
     $ npm start
 """
-
+import platform
+import pathlib
+if platform.system() != 'Windows':
+    pathlib.WindowsPath = pathlib.PosixPath
 import argparse
 import json
 import os
@@ -100,10 +103,10 @@ def try_export(inner_func):
         try:
             with Profile() as dt:
                 f, model = inner_func(*args, **kwargs)
-            LOGGER.info(f'{prefix} export success ✅ {dt.t:.1f}s, saved as {f} ({file_size(f):.1f} MB)')
+            LOGGER.info(f'{prefix} export success ?{dt.t:.1f}s, saved as {f} ({file_size(f):.1f} MB)')
             return f, model
         except Exception as e:
-            LOGGER.info(f'{prefix} export failure ❌ {dt.t:.1f}s: {e}')
+            LOGGER.info(f'{prefix} export failure ?{dt.t:.1f}s: {e}')
             return None, None
 
     return outer_func

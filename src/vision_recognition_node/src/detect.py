@@ -80,11 +80,11 @@ class Yolov5Detector:
         )
 
         # Setting inference size
-        self.img_size = [rospy.get_param("~inference_size_w",1920), rospy.get_param("~inference_size_h",1080)]
+        self.img_size = [rospy.get_param("~inference_size_w",640), rospy.get_param("~inference_size_h",480)]
         self.img_size = check_img_size(self.img_size, s=self.stride)
 
         # Half
-        self.half = rospy.get_param("~half", False)
+        self.half = rospy.get_param("~half", true)
         self.half &= (
             self.pt or self.jit or self.onnx or self.engine
         ) and self.device.type != "cpu"  # FP16 supported on limited backends with CUDA
@@ -197,6 +197,7 @@ class Yolov5Detector:
 
 
     def update_state(self, current_ship_detected):
+        return
         """状态机核心逻辑：根据当前检测结果更新状态并发送指令"""
         # 1. 确定当前状态
         new_state = "DETECTED_SHIP" if current_ship_detected else "NO_SHIP"
@@ -212,7 +213,7 @@ class Yolov5Detector:
         if new_state == "DETECTED_SHIP":
             
             gimbal_msg.zoom_in_state = 1
-            k=2  
+            k=2
             rospy.loginfo("状态切换：检测到船，发送gimbal_state_machine: 3")
         else:
             
