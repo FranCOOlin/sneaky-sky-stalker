@@ -16,3 +16,5 @@ rosbag record --duration=50 /gimbal/state /mavros/imu/data /gimbal/cmd /gimbal/d
 
 # 启动mavros节点
 roslaunch launch_all_node sys.launch
+
+roslaunch vision_recognition_node yolov5.launch

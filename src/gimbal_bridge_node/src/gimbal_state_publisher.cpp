@@ -12,6 +12,8 @@
 #include <gimbal_bridge_node/GimbalCmd.h>
 #include <gimbal_bridge_node/GimbalDebug.h>
 #include <sensor_msgs/Imu.h>
+#include <detection_msgs/BoundingBoxes.h>
+#include "control_lib/math_lib.hpp"
 
 constexpr int RECV_BUF_SIZE = 64;
 constexpr int SERVER_PORT = 37260;
@@ -417,6 +419,7 @@ int main(int argc, char **argv)
     pub = nh.advertise<gimbal_bridge_node::GimbalState>("/gimbal/state", 10);
     ros::Subscriber gimbal_attitude_sub = nh.subscribe("/gimbal/cmd", 3, gimbal_cmd_callback);
     ros::Subscriber drone_attitude_sub = nh.subscribe<sensor_msgs::Imu>("/mavros/imu/data", 3, drone_attitude_callback);
+
     gimbal_bridge.set_debug_publisher(nh.advertise<gimbal_bridge_node::GimbalDebug>("/gimbal/debug", 10));
 
     // 设置循环频率 (100Hz)
