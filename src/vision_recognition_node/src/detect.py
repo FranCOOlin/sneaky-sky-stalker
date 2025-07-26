@@ -150,6 +150,8 @@ class Yolov5Detector:
         pos_y = msg.pose.position.y
         pos_z = msg.pose.position.z
         self.current_z = pos_z
+
+        self.t = np.array([pos_x,pos_y,pos_z]).reshape(3, 1)
     
     def camera_pose_callback(self,msg):
         camera_yaw = msg.yaw
@@ -167,9 +169,6 @@ class Yolov5Detector:
             [A*D,A*C*E+B*F,A*C*F-B*E],
             [-C,D*E,D*F]
         ])
-
-
-
 
 
     # def odom_callback(self, msg):
@@ -192,7 +191,7 @@ class Yolov5Detector:
         camera_coords = np.array([[X * z], [Y * z], [z]])
 
         # 使用外参矩阵将相机坐标转换为机体坐标
-        world_coords = np.dot(self.R.T, camera_coords - self.t)
+        world_coords = np.dot(self.R, camera_coords + self.t)
 
         return world_coords.flatten()
 
@@ -211,20 +210,19 @@ class Yolov5Detector:
         gimbal_msg = GimbalCmd()
 
         if new_state == "DETECTED_SHIP":
-            # 检测到船时，设置gimbal_state_machine为3
+            
             gimbal_msg.zoom_in_state = 1
             k=2  
             rospy.loginfo("状态切换：检测到船，发送gimbal_state_machine: 3")
         else:
-            # 未检测到船时，设置gimbal_state_machine为1（或其他需求值）
+            
             gimbal_msg.zoom_in_state = 0
             k=1  
             rospy.loginfo("状态切换：未检测到船，发送gimbal_state_machine: 0")
 
-        # 发布指令
+        
         self.gimbal_cmd_pub.publish(gimbal_msg)
         
-        # 更新上一帧状态
         self.prev_ship_detected = current_ship_detected
         self.K = np.array([1931.5616206*k, 0.0, 956.5344838, 0.0, 1931.7249071*k, 531.7483834, 0.0, 0.0, 1.0]).reshape((3, 3))
 
@@ -269,7 +267,7 @@ class Yolov5Detector:
         if len(det):
             # Rescale boxes from img_size to im0 size
             det[:, :4] = scale_coords(im.shape[2:], det[:, :4], im0.shape).round()
-
+            
             # Write results
             for *xyxy, conf, cls in reversed(det):
                 bounding_box = BoundingBox()
@@ -305,7 +303,7 @@ class Yolov5Detector:
                       # integer class
                     label = f"{self.names[c]} {conf:.2f}"
                     annotator.box_label(xyxy, label, color=colors(c, True))       
-
+                
 
                 
                 ### POPULATE THE DETECTION MESSAGE HERE
@@ -345,5 +343,5 @@ if __name__ == "__main__":
     
     rospy.init_node("yolov5", anonymous=True)
     detector = Yolov5Detector()
-    
+
     rospy.spin()
