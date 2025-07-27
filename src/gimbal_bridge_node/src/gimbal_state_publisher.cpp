@@ -20,6 +20,7 @@
 constexpr int RECV_BUF_SIZE = 64;
 constexpr int SERVER_PORT = 37260;
 constexpr char SERVER_IP[] = "192.168.144.25";
+constexpr size_t MAX_QUEUE_SIZE = 5;
 
 // 创建 Publisher，Topic 名字和消息类型
 ros::Publisher pub;
@@ -40,9 +41,34 @@ struct TargetInfo
     int64_t ymax;
 };
 
-// 全局变量：保存最近5帧的目标队列
-std::deque<std::vector<TargetInfo>> target_history_queue;
-constexpr size_t MAX_QUEUE_SIZE = 5;
+// 定义识别结果结构体
+struct TargetsInfo
+{
+    std::vector<TargetInfo> targets;
+    uint32_t nsec;
+};
+
+// 定义俯仰角数据结构体
+struct pitchInfo
+{
+    double pitch;
+    uint32_t nsec;
+}
+
+// 定义云台运动需求结构体
+struct GimbalCmd
+{
+    float yaw;                // 偏航角
+    float pitch;              // 俯仰角
+    int gimbal_state_machine; // 云台状态机，0:前下方，1:正下方，2:自由控制
+    std::string json_string;  // JSON字符串，用于传递其他信息
+    int zoom_in_state;        // 变倍状态，0:变小，1:变大
+};
+
+std::deque<std::vector<TargetInfo>>
+    target_history_queue;
+std::deque<pitchInfo> pitch_history_queue;
+std::deque<GimbalCmd> gimbal_cmd_history_queue;
 
 class gimbal_camera_state_bridge
 {
