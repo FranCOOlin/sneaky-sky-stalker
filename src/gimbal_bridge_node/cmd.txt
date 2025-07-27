@@ -1,29 +1,31 @@
-source devel/setup.bash
-
-# 搜索模式
-cd /home/nvidia/sneaky-sky-stalker & source devel/setup.bash & rostopic pub -r 10 /gimbal/cmd gimbal_bridge_node/GimbalCmd "{yaw: 0.0, pitch: 0.0, gimbal_state_machine: 0, zoom_in_state: 0, json_string: ''}"
-
-# 跟踪模式
-cd /home/nvidia/sneaky-sky-stalker & source devel/setup.bash & rostopic pub -r 10 /gimbal/cmd gimbal_bridge_node/GimbalCmd "{yaw: 0.0, pitch: 0.0, gimbal_state_machine: 1, zoom_in_state: 0, json_string: ''}"
-
-# 启动云台节点
-rosrun gimbal_bridge_node gimbal_state_publisher
-
-# 录包50秒
+启动节点
+启动云台节点
+cd /home/nvidia/mh-sss && source devel/setup.bash && rosrun gimbal_bridge_node gimbal_state_publisher
+启动mavros节点
+cd /home/nvidia/mh-sss && source devel/setup.bash && roslaunch launch_all_node sys.launch
+启动识别节点
+cd /home/nvidia/mh-sss && source devel/setup.bash && roslaunch vision_recognition_node yolov52.launch
+启动相机
+cd /home/nvidia/mh-sss && source devel/setup.bash && roslaunch rtsp_ffmpeg run_rtsp_stream.launch
+给云台发送指令
+搜索模式
+cd /home/nvidia/mh-sss && source devel/setup.bash && rostopic pub -r 10 /gimbal/cmd gimbal_bridge_node/GimbalCmd "{yaw: 0.0, pitch: 0.0, gimbal_state_machine: 0, zoom_in_state: 0, json_string: ''}"
+跟踪模式
+cd /home/nvidia/mh-sss && source devel/setup.bash && rostopic pub -r 10 /gimbal/cmd gimbal_bridge_node/GimbalCmd "{yaw: 0.0, pitch: 0.0, gimbal_state_machine: 1, zoom_in_state: 0, json_string: ''}"
+录包指令
+录包50秒
 rosbag record --duration=50 /gimbal/state /mavros/imu/data /gimbal/cmd /gimbal/debug /yolov5/detections /gimbal_camera/image_raw/compressed
-
-# 录包500秒
+录包500秒
 rosbag record --duration=500 /gimbal/state /mavros/imu/data /gimbal/cmd /gimbal/debug /yolov5/detections /gimbal_camera/image_raw/compressed
-
-# 启动mavros节点
-cd /home/nvidia/sneaky-sky-stalker & source devel/setup.bash & roslaunch launch_all_node sys.launch
-
-#启动识别节点
-cd /home/nvidia/sneaky-sky-stalker & source devel/setup.bash & roslaunch vision_recognition_node yolov52.launch
-
-#启动相机
-cd /home/nvidia/sneaky-sky-stalker & source devel/setup.bash & roslaunch rtsp_ffmpeg run_rtsp_stream.launch
-
-cd /home/nvidia/sneaky-sky-stalker & source devel/setup.bash & roslaunch gimbal_bridge_node gimbal_record.launch
-
-cd /home/nvidia/sneaky-sky-stalker & source devel/setup.bash & roslaunch launch_all_node sys.launch
+查看系统工作状态
+查看相机画面帧率
+cd /home/nvidia/mh-sss && source devel/setup.bash && rostopic hz /gimbal_camera/image_raw
+查看无人机姿态话题帧率
+cd /home/nvidia/mh-sss && source devel/setup.bash && rostopic hz /mavros/imu/data
+查看云台姿态
+cd /home/nvidia/mh-sss && source devel/setup.bash && rostopic echo /gimbal/debug
+其他
+启动相机+录包
+cd /home/nvidia/mh-sss && source devel/setup.bash && roslaunch gimbal_bridge_node gimbal_record.launch
+重新编译
+cd /home/nvidia/mh-sss && source devel/setup.bash && catkin build

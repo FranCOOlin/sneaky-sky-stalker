@@ -1,6 +1,6 @@
 <launch>
     <!-- Detection configuration -->
-    <arg name="weights" default="/home/nvidia/sneaky-sky-stalker/src/vision_recognition_node/pt/best(2).pt" />
+    <arg name="weights" default="/home/nvidia/sneaky-sky-stalker/src/vision_recognition_node/src/yolov5/best2.engine" />
     <arg name="data" default="/home/nvidia/sneaky-sky-stalker/src/vision_recognition_node/yaml/cvc2.yaml" />
     <arg name="confidence_threshold" default="0.5" />
     <arg name="iou_threshold" default="0.45" />
@@ -9,7 +9,7 @@
     <arg name="agnostic_nms" default="true" />
     <arg name="line_thickness" default="3" />
     <arg name="dnn" default="true" />
-    <arg name="half" default="false" />
+    <arg name="half" default="true" />
 
     <!-- replace imgsz -->
     <arg name="inference_size_h" default="480" />

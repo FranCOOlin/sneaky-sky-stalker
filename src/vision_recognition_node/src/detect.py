@@ -9,6 +9,8 @@ import cv2
 import torch
 import torch.backends.cudnn as cudnn
 import numpy as np
+if not hasattr(np, 'bool'):
+    np.bool = np.bool_
 from cv_bridge import CvBridge
 from pathlib import Path
 import os
@@ -19,7 +21,7 @@ from sensor_msgs.msg import Image, CompressedImage
 from detection_msgs.msg import BoundingBox, BoundingBoxes
 from gimbal_bridge_node.msg import GimbalCmd,GimbalState
 
-
+from torchvision.ops import nms
 from nav_msgs.msg import Odometry
 
 
@@ -68,6 +70,7 @@ class Yolov5Detector:
         # Initialize weights 
         weights = rospy.get_param("~weights")
         # Initialize model
+        #self.device = select_device('0')
         self.device = select_device(str(rospy.get_param("~device","")))
         self.model = DetectMultiBackend(weights, device=self.device, dnn=rospy.get_param("~dnn"), data=rospy.get_param("~data"))
         self.stride, self.names, self.pt, self.jit, self.onnx, self.engine = (
@@ -84,7 +87,7 @@ class Yolov5Detector:
         self.img_size = check_img_size(self.img_size, s=self.stride)
 
         # Half
-        self.half = rospy.get_param("~half", true)
+        self.half = rospy.get_param("~half", True)
         self.half &= (
             self.pt or self.jit or self.onnx or self.engine
         ) and self.device.type != "cpu"  # FP16 supported on limited backends with CUDA
