@@ -17,6 +17,9 @@
         <arg name="respawn_mavros" value="$(arg respawn_mavros)" />
     </include>
 
-
-
+  <!-- 在PX4节点启动后运行mavros命令:rosrun mavros mavcmd long 511 31 10000 0 0 0 0 0 -->
+  <node pkg="mavros" type="mavcmd" name="set_attitude_rate"
+  args="long 511 31 20000 0 0 0 0 0"
+  launch-prefix="bash -c 'sleep 5; $0 $@'"
+  output="screen" />
 </launch>
