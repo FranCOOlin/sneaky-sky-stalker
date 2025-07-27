@@ -53,7 +53,7 @@ struct pitchInfo
 {
     double pitch;
     uint32_t nsec;
-}
+};
 
 // 定义云台运动需求结构体
 struct GimbalCmd
@@ -187,6 +187,26 @@ public:
 
     bool receive_and_publish()
     {
+        // 使用select函数检查套接字是否可读
+        fd_set read_fds;
+        struct timeval timeout;
+        FD_ZERO(&read_fds);
+        FD_SET(sockfd, &read_fds);
+        timeout.tv_sec = 0; // 设置超时时间为0，实现非阻塞
+        timeout.tv_usec = 0;
+
+        int activity = select(sockfd + 1, &read_fds, nullptr, nullptr, &timeout);
+        if (activity < 0)
+        {
+            ROS_ERROR("select failed: %s", strerror(errno));
+            return false;
+        }
+        else if (activity == 0)
+        {
+            // 超时，没有数据可读
+            return false;
+        }
+
         // 接收响应
         struct sockaddr_in recv_addr;
         socklen_t addr_len = sizeof(recv_addr);
