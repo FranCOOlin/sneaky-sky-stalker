@@ -533,11 +533,36 @@ void input_state_check()
     double current_time_sec = ros::Time::now().toSec();
     if (current_time_sec - last_time_sec >= 1.0)
     {
-        // 每秒钟打印一次统计信息
-        ROS_INFO("Target messages received in the last second: %d", target_msg_count);
-        ROS_INFO("State bags received in the last second: %d", state_msg_count);
-        ROS_INFO("Gimbal commands received in the last second: %d", gimbal_cmd_count);
+        std::cout << "=====================" << std::endl;
+        // 阈值检查
+        if (target_msg_count < 15)
+        {
+            ROS_ERROR("Target messages count too low: %d (threshold: 15)", target_msg_count);
+        }
+        else
+        {
+            ROS_INFO("Target messages received in the last second: %d", target_msg_count);
+        }
 
+        if (state_msg_count < 80)
+        {
+            ROS_ERROR("State bags count too low: %d (threshold: 80)", state_msg_count);
+        }
+        else
+        {
+            ROS_INFO("State bags received in the last second: %d", state_msg_count);
+        }
+
+        if (gimbal_cmd_count < 5)
+        {
+            ROS_ERROR("Gimbal commands count too low: %d (threshold: 5)", gimbal_cmd_count);
+        }
+        else
+        {
+            ROS_INFO("Gimbal commands received in the last second: %d", gimbal_cmd_count);
+        }
+        std::cout << "=====================" << std::endl
+                  << std::endl;
         // 重置计数器
         target_msg_count = 0;
         state_msg_count = 0;
