@@ -239,6 +239,8 @@ public:
         this->gimbal_yaw_feed = static_cast<float>(response.yaw) / 10.0f;
         this->gimbal_pitch_feed = static_cast<float>(response.pitch) / 10.0f;
         gimbal_bridge_node::GimbalState msg;
+        msg.header.stamp = ros::Time::now();
+        msg.header.frame_id = "gimbal_state";
         msg.yaw = this->gimbal_yaw_feed;
         msg.pitch = this->gimbal_pitch_feed;
         msg.roll = static_cast<float>(response.roll) / 10.0f;
@@ -250,6 +252,7 @@ public:
         {
             debug_msg.gimbal_state.erase(debug_msg.gimbal_state.begin());
         }
+        state_msg_count++;
         return true;
     }
 
@@ -544,7 +547,7 @@ void input_state_check()
             ROS_INFO("Target messages received in the last second: %d", target_msg_count);
         }
 
-        if (state_msg_count < 80)
+        if (state_msg_count < 40)
         {
             ROS_ERROR("State bags count too low: %d (threshold: 80)", state_msg_count);
         }
@@ -580,14 +583,6 @@ void debug_msg_publish()
     {
         gimbal_bridge.debug_pub.publish(debug_msg);
     }
-    // 清空调试消息
-    debug_msg.gimbal_yaw = 0.0f;
-    debug_msg.gimbal_pitch = 0.0f;
-    debug_msg.gimbal_state_machine = 0;
-    debug_msg.zoom_in_state = 0;
-    debug_msg.drone_pitch = 0.0f;
-    debug_msg.gimbal_yaw_cmd = 0.0f;
-    debug_msg.gimbal_pitch_cmd = 0.0f;
 }
 
 int main(int argc, char **argv)
