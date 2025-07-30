@@ -1,3 +1,10 @@
+Header header
+
+GimbalState[] gimbal_state
+GimbalCmd[] gimbal_cmd
+sensor_msgs/Imu[] imu
+detection_msgs/BoundingBoxes[] bounding_boxes
+
 float32 gimbal_yaw
 float32 gimbal_pitch
 int32 gimbal_state_machine

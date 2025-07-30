@@ -29,3 +29,7 @@ cd /home/nvidia/mh-sss && source devel/setup.bash && rostopic echo /gimbal/debug
 cd /home/nvidia/mh-sss && source devel/setup.bash && roslaunch gimbal_bridge_node gimbal_record.launch
 重新编译
 cd /home/nvidia/mh-sss && source devel/setup.bash && catkin build
+监控云台通信
+sudo tshark -i any -f "host 192.168.144.25 and port 37260" -a duration:30 -w /tmp/capture_192.168.144.25_37260.pcap
+sudo mv /tmp/capture_192.168.144.25_37260.pcap /home/nvidia/
+sudo chown nvidia:nvidia /home/nvidia/capture_192.168.144.25_37260.pcap

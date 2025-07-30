@@ -9,6 +9,8 @@
 #include <unistd.h>
 #include <deque>
 #include <algorithm>
+#include <queue>
+#include <vector>
 #include <gimbal_bridge_node/siyi_zr10_protocol.h>
 #include <gimbal_bridge_node/GimbalState.h>
 #include <gimbal_bridge_node/GimbalCmd.h>
@@ -25,7 +27,16 @@ constexpr size_t MAX_QUEUE_SIZE = 5;
 // 创建 Publisher，Topic 名字和消息类型
 ros::Publisher pub;
 
-float drone_pitch_deg = 0.0f; // 当前俯仰角
+// 当前俯仰角
+float drone_pitch_deg = 0.0f;
+
+// 过去一秒钟收到的三种消息的数量
+int target_msg_count = 0;
+int state_msg_count = 0;
+int gimbal_cmd_count = 0;
+double last_time_sec = 0.0;
+
+gimbal_bridge_node::GimbalDebug debug_msg;
 
 // 定义目标结构体
 struct TargetInfo
@@ -39,12 +50,17 @@ struct TargetInfo
     int64_t ymin;
     int64_t xmax;
     int64_t ymax;
+    friend bool operator>(const TargetInfo &a, const TargetInfo &b)
+    {
+        return a.probability > b.probability; // 按概率排序
+    }
 };
 
 // 定义识别结果结构体
 struct TargetsInfo
 {
-    std::vector<TargetInfo> targets;
+    // 小根堆，当堆中的元素超过2个时，自动删除概率最低的元素，最终维持堆中的元素个数不超过2个，留下的就是概率最高的两个目标
+    std::priority_queue<TargetInfo, std::vector<TargetInfo>, std::greater<TargetInfo>> targets;
     uint32_t nsec;
 };
 
@@ -55,20 +71,8 @@ struct pitchInfo
     uint32_t nsec;
 };
 
-// 定义云台运动需求结构体
-struct GimbalCmd
-{
-    float yaw;                // 偏航角
-    float pitch;              // 俯仰角
-    int gimbal_state_machine; // 云台状态机，0:前下方，1:正下方，2:自由控制
-    std::string json_string;  // JSON字符串，用于传递其他信息
-    int zoom_in_state;        // 变倍状态，0:变小，1:变大
-};
-
-std::deque<std::vector<TargetInfo>>
-    target_history_queue;
-std::deque<pitchInfo> pitch_history_queue;
-std::deque<GimbalCmd> gimbal_cmd_history_queue;
+std::deque<gimbal_bridge_node::GimbalCmd> gimbal_cmd_history_queue;
+std::deque<gimbal_bridge_node::GimbalState> gimbal_state_history_queue;
 
 class gimbal_camera_state_bridge
 {
@@ -241,6 +245,11 @@ public:
         msg.json_string = "{\"status\":\"normal\"}";
         // 发布消息
         pub.publish(msg);
+        debug_msg.gimbal_state.push_back(msg);
+        while (debug_msg.gimbal_state.size() > MAX_QUEUE_SIZE)
+        {
+            debug_msg.gimbal_state.erase(debug_msg.gimbal_state.begin());
+        }
         return true;
     }
 
@@ -369,6 +378,13 @@ void gimbal_cmd_callback(const gimbal_bridge_node::GimbalCmd::ConstPtr &msg)
     gimbal_bridge_node::GimbalCmd gimbal_cmd = *msg;
     ROS_INFO("gimbal bridge state machine: %d", gimbal_bridge.get_state_machine());
 
+    debug_msg.gimbal_cmd.push_back(gimbal_cmd);
+    while (debug_msg.gimbal_cmd.size() > MAX_QUEUE_SIZE)
+    {
+        debug_msg.gimbal_cmd.erase(debug_msg.gimbal_cmd.begin());
+    }
+    gimbal_cmd_count++;
+
     if ((gimbal_cmd.gimbal_state_machine == 2) != (gimbal_bridge.get_state_machine() == 2))
     {
         gimbal_bridge.set_state_machine(gimbal_cmd.gimbal_state_machine);
@@ -443,7 +459,6 @@ void gimbal_cmd_callback(const gimbal_bridge_node::GimbalCmd::ConstPtr &msg)
     }
 
     // debug
-    gimbal_bridge_node::GimbalDebug debug_msg;
     debug_msg.gimbal_yaw = gimbal_bridge.gimbal_yaw_feed;
     debug_msg.gimbal_pitch = gimbal_bridge.gimbal_pitch_feed;
     debug_msg.gimbal_state_machine = gimbal_bridge.get_state_machine();
@@ -451,10 +466,6 @@ void gimbal_cmd_callback(const gimbal_bridge_node::GimbalCmd::ConstPtr &msg)
     debug_msg.drone_pitch = drone_pitch_deg;
     debug_msg.gimbal_yaw_cmd = gimbal_cmd.yaw;
     debug_msg.gimbal_pitch_cmd = gimbal_cmd.pitch;
-    if (gimbal_bridge.debug_pub)
-    {
-        gimbal_bridge.debug_pub.publish(debug_msg);
-    }
 }
 
 void drone_attitude_callback(const sensor_msgs::Imu::ConstPtr &msg)
@@ -473,17 +484,22 @@ void drone_attitude_callback(const sensor_msgs::Imu::ConstPtr &msg)
     // 可选：转换为角度（方便人类阅读）
     drone_pitch_deg = pitch * 180.0 / M_PI;
 
-    // 可以在这里使用计算得到的俯仰角，例如打印输出
-    ROS_INFO("current pitch: %.2f rad (%.2f deg)", pitch, drone_pitch_deg);
+    debug_msg.imu.push_back(*msg);
+    while (debug_msg.imu.size() > MAX_QUEUE_SIZE)
+    {
+        debug_msg.imu.erase(debug_msg.imu.begin());
+    }
 }
 
 void bounding_boxes_callback(const detection_msgs::BoundingBoxes::ConstPtr &msg)
 {
-    // 1. 显示检测到的目标数量
+    // 显示检测到的目标数量
     ROS_INFO("Received %zu bounding boxes", msg->bounding_boxes.size());
 
-    // 2. 处理当前帧的目标
+    // 处理当前帧的目标
     std::vector<TargetInfo> current_frame_targets;
+    TargetsInfo targets_info;
+    targets_info.nsec = msg->header.stamp.toNSec();
 
     for (const auto &box : msg->bounding_boxes)
     {
@@ -502,46 +518,51 @@ void bounding_boxes_callback(const detection_msgs::BoundingBoxes::ConstPtr &msg)
         target.xmax = box.xmax;
         target.ymax = box.ymax;
 
-        current_frame_targets.push_back(target);
+        targets_info.targets.push(target);
 
-        ROS_INFO("Target: Class=%s, Prob=%.2f, Center=(%.1f, %.1f), Box=[%ld, %ld, %ld, %ld]",
-                 box.Class.c_str(), box.probability, center_x, center_y,
-                 box.xmin, box.ymin, box.xmax, box.ymax);
-    }
-
-    // 3. 按可信度排序，取前两个目标
-    std::sort(current_frame_targets.begin(), current_frame_targets.end(),
-              [](const TargetInfo &a, const TargetInfo &b)
-              {
-                  return a.probability > b.probability;
-              });
-
-    if (current_frame_targets.size() > 2)
-    {
-        current_frame_targets.resize(2);
-    }
-
-    // 4. 更新队列
-    target_history_queue.push_back(current_frame_targets);
-
-    // 保持队列长度为5
-    if (target_history_queue.size() > MAX_QUEUE_SIZE)
-    {
-        target_history_queue.pop_front();
-    }
-
-    // 5. 打印队列状态
-    ROS_INFO("Target history queue size: %zu/%zu", target_history_queue.size(), MAX_QUEUE_SIZE);
-    for (size_t i = 0; i < target_history_queue.size(); ++i)
-    {
-        const auto &frame_targets = target_history_queue[i];
-        ROS_INFO("Frame %zu: %zu targets", i, frame_targets.size());
-        for (const auto &target : frame_targets)
+        while (targets_info.targets.size() > 2)
         {
-            ROS_INFO("  - %s (prob: %.2f, center: %.1f, %.1f)",
-                     target.class_name.c_str(), target.probability, target.center_x, target.center_y);
+            targets_info.targets.pop(); // 保持最多两个目标
         }
     }
+}
+
+void input_state_check()
+{
+    // 根据三个queue中最新元素的时间和当前时间的差来进行安全检查
+    double current_time_sec = ros::Time::now().toSec();
+    if (current_time_sec - last_time_sec >= 1.0)
+    {
+        // 每秒钟打印一次统计信息
+        ROS_INFO("Target messages received in the last second: %d", target_msg_count);
+        ROS_INFO("State bags received in the last second: %d", state_msg_count);
+        ROS_INFO("Gimbal commands received in the last second: %d", gimbal_cmd_count);
+
+        // 重置计数器
+        target_msg_count = 0;
+        state_msg_count = 0;
+        gimbal_cmd_count = 0;
+
+        last_time_sec = current_time_sec;
+    }
+}
+
+void debug_msg_publish()
+{
+    debug_msg.header.stamp = ros::Time::now();
+    debug_msg.header.frame_id = "gimbal_debug";
+    if (gimbal_bridge.debug_pub)
+    {
+        gimbal_bridge.debug_pub.publish(debug_msg);
+    }
+    // 清空调试消息
+    debug_msg.gimbal_yaw = 0.0f;
+    debug_msg.gimbal_pitch = 0.0f;
+    debug_msg.gimbal_state_machine = 0;
+    debug_msg.zoom_in_state = 0;
+    debug_msg.drone_pitch = 0.0f;
+    debug_msg.gimbal_yaw_cmd = 0.0f;
+    debug_msg.gimbal_pitch_cmd = 0.0f;
 }
 
 int main(int argc, char **argv)
@@ -557,7 +578,7 @@ int main(int argc, char **argv)
     gimbal_bridge.set_debug_publisher(nh.advertise<gimbal_bridge_node::GimbalDebug>("/gimbal/debug", 10));
 
     // 设置循环频率 (100Hz)
-    ros::Rate loop_rate(101);
+    ros::Rate loop_rate(100);
 
     while (gimbal_bridge.ping() == 0)
     {
@@ -565,11 +586,15 @@ int main(int argc, char **argv)
     gimbal_bridge.set_func_mode(FUNC_MODE_FPV);
     gimbal_bridge.request_gimbal_state();
 
+    last_time_sec = ros::Time::now().toSec();
+
     while (ros::ok())
     {
         ros::spinOnce(); // 处理 ROS 事件队列
         gimbal_bridge.receive_and_publish();
         loop_rate.sleep();
+        input_state_check();
+        debug_msg_publish();
     }
 
     return 0;
